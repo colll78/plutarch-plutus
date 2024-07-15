@@ -8,8 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-* `ptryContains` to `Interval`, which checks interval invariants.
 * `pintervalOpenEnd`, a variant of `pinterval` with an open endpoint.
+* `pcheckInterval` to verify that an interval meets invariants
 
 ### Changed
 

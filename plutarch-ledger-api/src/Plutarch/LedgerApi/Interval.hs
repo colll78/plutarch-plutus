@@ -3,6 +3,27 @@
 
 {- | This module is meant to be imported qualified, as some of its identifiers
 clash with the Plutarch prelude, as well as other parts of the Plutarch API.
+
+= Important note
+
+While this module suggests that we can construct any intervals we like, Plutus
+does not seem to agree (see [this issue](https://github.com/Plutonomicon/cardano-transaction-lib/issues/1041#issuecomment-1280868255)).
+ As a result, the /only/ intervals that are guaranteed to work have the following
+forms:
+
+* @[start, +inf)@
+* @[start, end)@
+* @(-inf, end]@
+* @(-inf, +inf)@
+
+Construction of, and use of, any intervals other than these is likely to
+cause bugs and issues, and must be avoided. The functions in this module
+assume that only these kinds of arguments will be given to them, and can
+silently produce wrong results if not.
+
+If you want to check if any given 'PInterval' makes sense given the above,
+use 'pcheckInterval', which will error if given a 'PInterval' not in one
+of the forms above.
 -}
 module Plutarch.LedgerApi.Interval (
   -- * Types
@@ -22,9 +43,9 @@ module Plutarch.LedgerApi.Interval (
   pintervalOpenEnd,
 
   -- ** Queries
+  pcheckInterval,
   pmember,
   pcontains,
-  ptryContains,
   pbefore,
   pafter,
 
@@ -278,23 +299,6 @@ pmember = phoistAcyclic $ plam $ \x i -> pcontains # i # (psingleton # x)
 
 {- | @'pcontains' # x # y@ is true if the interval @y@ is entirely contained in @a@.
 
-= Important note
-
-The only intervals supported by Plutus are one of the following:
-
-* @[start, +inf)@
-* @(-inf, end]@
-* @[start, end)@
-* @(-inf, +inf)@
-
-This function is written under the assumption that _only_ such intervals will
-be passed to it, and /will/ give wrong answers if not. Checking the
-invariants involved is somewhat expensive, and thus, this function remains
-for cases where efficiency is paramount.
-
-If you are unsure whether the interval you have is of a valid form, use
-'ptryContains', as this will error instead of giving you a wrong answer.
-
 @since 2.1.1
 -}
 pcontains ::
@@ -315,21 +319,6 @@ pcontains = phoistAcyclic $
     let lowerY = getField @"from" y
     let upperY = getField @"to" y
     pure $ leqP # (lToE # lowerX) # (lToE # lowerY) #&& leqP # (uToE # upperY) # (uToE # upperX)
-
-{- | As 'pcontains', but verifies that the intervals passed as arguments are
-sensible (see 'pcontains' description for this). Will error if given
-intervals that aren't supported.
-
-@since 3.2.2
--}
-ptryContains ::
-  forall (a :: S -> Type) (s :: S).
-  (POrd a, PIsData a) =>
-  Term s (PInterval a :--> PInterval a :--> PBool)
-ptryContains = phoistAcyclic $ plam $ \x' y' -> unTermCont $ do
-  pcheckInterval x'
-  pcheckInterval y'
-  pure $ pcontains # x' # y'
 
 {- | Given @x@, create the interval @[x, x]@.
 
@@ -504,6 +493,67 @@ pintervalOpenEnd = phoistAcyclic $
         lower = pcon . PLowerBound $ pdcons @"_0" # pdata start #$ pdcons @"_1" # startClosure # pdnil
         upper = pcon . PUpperBound $ pdcons @"_0" # pdata end #$ pdcons @"_1" # endClosure # pdnil
      in pcon . PInterval $ pdcons @"from" # pdata lower #$ pdcons @"to" # pdata upper # pdnil
+
+{- | Checks that we have one of the following:
+
+* `[start, +inf)`
+* `(-inf, end]`
+* `[start, end)`
+* `(-inf, +inf)`
+
+@since 3.2.2
+-}
+pcheckInterval ::
+  forall (a :: S -> Type) (s :: S).
+  Term s (PInterval a) ->
+  Term s PUnit
+pcheckInterval i' = unTermCont $ do
+  i <- tcont $ pletFields @'["from", "to"] i'
+  start <- tcont $ pletFields @'["_0", "_1"] $ getField @"from" i
+  end <- tcont $ pletFields @'["_0", "_1"] $ getField @"to" i
+  isCase1 <- tcont $ \k ->
+    pif
+      (getField @"_1" start)
+      -- Case 1: start is closed.
+      -- Check that it's finite, yield PTrue
+      ( pmatch (getField @"_0" start) $ \case
+          PFinite _ -> k (pcon PTrue)
+          _ -> ptraceInfoError "interval error: closed start not finite"
+      )
+      -- Case 2: start is open.
+      -- Check that it's -inf, yield PFalse
+      ( pmatch (getField @"_0" start) $ \case
+          PNegInf _ -> k (pcon PFalse)
+          _ -> ptraceInfoError "interval error: open start not -inf"
+      )
+  tcont $ \k ->
+    pif
+      isCase1
+      -- End must be open, and either finite or +inf
+      ( pif
+          (getField @"_1" end)
+          -- End is closed, fail
+          (ptraceInfoError "interval error: closed start and end")
+          -- End is open, check for form
+          ( pmatch (getField @"_0" end) $ \case
+              PNegInf _ -> ptraceInfoError "interval error: -inf end"
+              _ -> k (pconstant ())
+          )
+      )
+      -- End must be either closed and finite, or open and +inf
+      ( pif
+          (getField @"_1" end)
+          -- End is closed, check if it's finite
+          ( pmatch (getField @"_0" end) $ \case
+              PFinite _ -> k (pconstant ())
+              _ -> ptraceInfoError "interval error: closed end not finite"
+          )
+          -- End is open, check if it's +inf
+          ( pmatch (getField @"_0" end) $ \case
+              PPosInf _ -> k (pconstant ())
+              _ -> ptraceInfoError "interval error: open end not +inf"
+          )
+      )
 
 -- Helpers
 
@@ -774,67 +824,3 @@ gtE' x = \case
   PFinite r ->
     let y = pfield @"_0" # r
      in y #< x
-
--- Helpers
-
--- Checks that we have one of the following:
---
-
--- * `[start, +inf)`
-
--- * `(-inf, end]`
-
--- * `[start, end)`
-
--- * `(-inf, +inf)`
-pcheckInterval ::
-  forall (a :: S -> Type) (s :: S).
-  Term s (PInterval a) ->
-  TermCont s ()
-pcheckInterval i' = do
-  i <- tcont $ pletFields @'["from", "to"] i'
-  start <- tcont $ pletFields @'["_0", "_1"] $ getField @"from" i
-  end <- tcont $ pletFields @'["_0", "_1"] $ getField @"to" i
-  isCase1 <- tcont $ \k ->
-    pif
-      (getField @"_1" start)
-      -- Case 1: start is closed.
-      -- Check that it's finite, yield PTrue
-      ( pmatch (getField @"_0" start) $ \case
-          PFinite _ -> k (pcon PTrue)
-          _ -> ptraceInfoError "interval error: closed start not finite"
-      )
-      -- Case 2: start is open.
-      -- Check that it's -inf, yield PFalse
-      ( pmatch (getField @"_0" start) $ \case
-          PNegInf _ -> k (pcon PFalse)
-          _ -> ptraceInfoError "interval error: open start not -inf"
-      )
-  tcont $ \k ->
-    pif
-      isCase1
-      -- End must be open, and either finite or +inf
-      ( pif
-          (getField @"_1" end)
-          -- End is closed, fail
-          (ptraceInfoError "interval error: closed start and end")
-          -- End is open, check for form
-          ( pmatch (getField @"_0" end) $ \case
-              PNegInf _ -> ptraceInfoError "interval error: -inf end"
-              _ -> k ()
-          )
-      )
-      -- End must be either closed and finite, or open and +inf
-      ( pif
-          (getField @"_1" end)
-          -- End is closed, check if it's finite
-          ( pmatch (getField @"_0" end) $ \case
-              PFinite _ -> k ()
-              _ -> ptraceInfoError "interval error: closed end not finite"
-          )
-          -- End is open, check if it's +inf
-          ( pmatch (getField @"_0" end) $ \case
-              PPosInf _ -> k ()
-              _ -> ptraceInfoError "interval error: open end not +inf"
-          )
-      )
