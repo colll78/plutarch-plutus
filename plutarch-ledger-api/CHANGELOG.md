@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 3.2.2 -- 15-07-2024
+
+### Added
+
+* `ptryContains` to `Interval`, which checks interval invariants.
+* `pintervalOpenEnd`, a variant of `pinterval` with an open endpoint.
+
+### Changed
+
+* `pinterval` is deprecated
+
 ## 3.2.1 -- 11-07-2024
 
 ### Changed
