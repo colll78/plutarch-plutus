@@ -56,7 +56,7 @@
             src = ./.;
             compiler-nix-name = "ghc965";
             # NOTE(bladyjoker): Follow https://github.com/input-output-hk/plutus/blob/master/cabal.project
-            index-state = "2024-09-01T16:18:12Z";
+            index-state = "2024-10-16T00:00:00Z";
             inputMap = {
               "https://chap.intersectmbo.org/" = CHaP;
             };

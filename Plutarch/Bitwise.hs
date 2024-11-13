@@ -155,7 +155,7 @@ pcomplementByteString = punsafeBuiltin PLC.ComplementByteString
 preadBit :: Term s (PByteString :--> PInteger :--> PBool)
 preadBit = punsafeBuiltin PLC.ReadBit
 
-pwriteBits :: Term s (PByteString :--> PBuiltinList PInteger :--> PBuiltinList PBool :--> PByteString)
+pwriteBits :: Term s (PByteString :--> PBuiltinList PInteger :--> PBool :--> PByteString)
 pwriteBits = punsafeBuiltin PLC.WriteBits
 
 preplicateByte :: Term s (PInteger :--> PInteger :--> PByteString)

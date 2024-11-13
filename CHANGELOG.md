@@ -1,5 +1,23 @@
 # Revision history for plutarch
 
+# 1.10.0 - 13-11-2024
+
+## Added
+* Added `hashScriptWithPrefix` to `Plutarch.Script`
+
+## Changed
+* Bumped `plutus-core` version to `1.33.0.0`
+- Change signature of `pwriteBits` builtin from:
+```
+[bytestring, list integer, list boolean] -> bytestring
+```
+
+   to
+
+```
+[bytestring, list integer, boolean] -> bytestring
+```
+
 # 1.9.0 - 25-09-2024
 
 ## Added
