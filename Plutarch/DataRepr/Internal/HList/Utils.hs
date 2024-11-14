@@ -11,7 +11,7 @@ module Plutarch.DataRepr.Internal.HList.Utils (
 
 import Data.Kind (Type)
 import GHC.TypeLits (
-  ErrorMessage (Text),
+  ErrorMessage (Text, (:$$:), (:<>:)),
   Nat,
   Symbol,
   TypeError,
